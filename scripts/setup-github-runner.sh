@@ -39,6 +39,9 @@ fi
   --unattended \
   --replace
 
+echo "$USER ALL=(ALL) NOPASSWD: /usr/bin/docker" | sudo tee /etc/sudoers.d/docker-nopasswd >/dev/null
+sudo chmod 440 /etc/sudoers.d/docker-nopasswd
+
 sudo ./svc.sh install
 sudo ./svc.sh start
 sudo ./svc.sh status
