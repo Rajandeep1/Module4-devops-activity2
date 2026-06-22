@@ -1,0 +1,64 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+env:
+  IMAGE_NAME: express-greeting-app
+  CONTAINER_NAME: express-app
+
+jobs:
+  ci:
+    name: Build and Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t ${{ env.IMAGE_NAME }}:test .
+
+      - name: Start container
+        run: |
+          docker run -d -p 3000:3000 --name app-test ${{ env.IMAGE_NAME }}:test
+          sleep 5
+
+      - name: Smoke test - GET homepage
+        run: curl -fsS http://localhost:3000/ | grep -q "Enter Your Name"
+
+      - name: Smoke test - POST greeting
+        run: |
+          response=$(curl -fsS -X POST -d "name=CI" http://localhost:3000/)
+          echo "$response" | grep -q "Hello CI"
+
+      - name: Stop test container
+        if: always()
+        run: docker rm -f app-test 2>/dev/null || true
+
+  cd:
+    name: Deploy to VM
+    needs: ci
+    runs-on: [self-hosted, linux, vagrant-vm]
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'))
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Deploy application
+        run: |
+          chmod +x deploy-remote.sh
+          ./deploy-remote.sh "$GITHUB_WORKSPACE"
+
+      - name: Verify deployment
+        run: |
+          sleep 3
+          curl -fsS http://localhost:3000/ | grep -q "Enter Your Name"
+          echo "Deployment verified at http://$(hostname -I | awk '{print $1}'):3000"
